@@ -1,3 +1,4 @@
+import bcrypt
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, String, Float
@@ -23,6 +24,14 @@ class TransactionDB(Base):
     note: Mapped[str] = mapped_column(String, default="")
 
 
+class UserDB(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    email: Mapped[str] = mapped_column(String, unique=True)
+    password_hash: Mapped[str] = mapped_column(String)
+
 Base.metadata.create_all(engine)  # table nahi hai to bana do
 
 
@@ -38,7 +47,17 @@ class TransactionOut(TransactionIn):
     id: int
     model_config = {"from_attributes": True}
 
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    password: str
 
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    email: str
+    model_config = {"from_attributes": True}
 # 4. Har request ko ek database session dena
 def get_db():
     db = SessionLocal()
@@ -80,7 +99,7 @@ def delete_transaction(id: int, db: Session = Depends(get_db)):
     return {"message": "Transaction deleted"}
 
 
-@app.put("/transactionas/{id}",response_model = TransactionOut)
+@app.put("/transactions/{id}",response_model = TransactionOut)
 def update_transaction(id:int,t: TransactionIn, db: Session = Depends(get_db)):
     row = db.get(TransactionDB, id)
     if row is None:
@@ -92,3 +111,17 @@ def update_transaction(id:int,t: TransactionIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(row)
     return row
+
+@app.post("/auth/register",response_model = UserOut)
+def register(u: UserCreate,db:session= Depends(get_db)):
+    existing = db.query(UserDB).filter(UserDB.email== u.email).first()
+    if existing:
+        raise HTTPException(status_code= 400,detail="Email already registered")
+    hashed= bcrypt.hashpw(u.password.encode(), bcrypt.gensalt()).decode()
+    user = UserDB(name=u.name, email=u.email, password_hash=hashed)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+     
