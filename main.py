@@ -80,8 +80,8 @@ def delete_transaction(id: int, db: Session = Depends(get_db)):
     return {"message": "Transaction deleted"}
 
 
-@app.put("/transaction/{id}",response_model = TransactionOut)
-def update_transactions(id:int,t: TransactionIn, db: Session = Depends(get_db)):
+@app.put("/transactionas/{id}",response_model = TransactionOut)
+def update_transaction(id:int,t: TransactionIn, db: Session = Depends(get_db)):
     row = db.get(TransactionDB, id)
     if row is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
