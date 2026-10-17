@@ -1,3 +1,6 @@
+import jwt
+from datetime import datetime, timedelta, timezone
+from fastapi.security import OAuth2PasswordRequestForm
 import bcrypt
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
@@ -66,7 +69,16 @@ def get_db():
     finally:
         db.close()
 
+SECRET_KEY = "change-this-later-to-a-long-random-string"
+ALGORITHM = "HS256"
 
+
+def create_token(user_id: int):
+    payload = {
+        "sub": str(user_id),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=60),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 app = FastAPI()
 
 
@@ -123,5 +135,14 @@ def register(u: UserCreate,db:session= Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+
+@app.post("/auth/login")
+def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.email == form.username).first()
+    if user is None or not bcrypt.checkpw(form.password.encode(), user.password_hash.encode()):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_token(user.id)
+    return {"access_token": token, "token_type": "bearer"}
 
      
