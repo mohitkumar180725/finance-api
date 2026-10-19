@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 import bcrypt
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, String, Float
+from sqlalchemy import create_engine, String, Float , ForeignKey
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase, Mapped, mapped_column
 
 # 1. Database connection (finance.db file ban jayegi)
@@ -25,6 +25,7 @@ class TransactionDB(Base):
     type: Mapped[str] = mapped_column(String)
     category: Mapped[str] = mapped_column(String)
     note: Mapped[str] = mapped_column(String, default="")
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
 
 class UserDB(Base):
@@ -99,10 +100,13 @@ app = FastAPI()
 def home():
     return {"message": "Finance API is running!"}
 
-
 @app.post("/transactions", response_model=TransactionOut)
-def add_transaction(t: TransactionIn, db: Session = Depends(get_db)):
-    row = TransactionDB(**t.model_dump())
+def add_transaction(
+    t: TransactionIn,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    row = TransactionDB(**t.model_dump(), user_id=current_user.id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -110,24 +114,36 @@ def add_transaction(t: TransactionIn, db: Session = Depends(get_db)):
 
 
 @app.get("/transactions", response_model=list[TransactionOut])
-def list_transactions(db: Session = Depends(get_db)):
-    return db.query(TransactionDB).all()
+def list_transactions(
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    return db.query(TransactionDB).filter(TransactionDB.user_id == current_user.id).all()
 
 
 @app.delete("/transactions/{id}")
-def delete_transaction(id: int, db: Session = Depends(get_db)):
+def delete_transaction(
+    id: int,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
     row = db.get(TransactionDB, id)
-    if row is None:
+    if row is None or row.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Transaction not found")
     db.delete(row)
     db.commit()
     return {"message": "Transaction deleted"}
 
 
-@app.put("/transactions/{id}",response_model = TransactionOut)
-def update_transaction(id:int,t: TransactionIn, db: Session = Depends(get_db)):
+@app.put("/transactions/{id}", response_model=TransactionOut)
+def update_transaction(
+    id: int,
+    t: TransactionIn,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
     row = db.get(TransactionDB, id)
-    if row is None:
+    if row is None or row.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Transaction not found")
     row.amount = t.amount
     row.type = t.type
